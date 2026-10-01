@@ -13,6 +13,8 @@ coverage/
 # webOS local private configurations & compiled binaries (Anti-DMCA)
 telecupole-unofficial-webos/config.js
 telecupole-webos/config.js
+private-release/
+my-tv-package/
 *.ipk
 *.zip
 .ares/
