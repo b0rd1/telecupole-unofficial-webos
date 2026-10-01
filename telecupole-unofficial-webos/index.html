@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1920, height=1080, user-scalable=no, initial-scale=1.0, maximum-scale=1.0">
+  
+  <!-- Content Security Policy (CSP) per massima sicurezza su webOS -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; media-src 'self' https: blob:; connect-src 'self' https: blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:;">
+  
+  <title>Telecupole (Unofficial)</title>
+
+  <style>
+    /* AZZERAMENTO TOTALE & ZERO-UI KIOSK */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      cursor: none !important;
+      -webkit-user-select: none;
+      user-select: none;
+      outline: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #000000;
+      background: #000000;
+      color: #ffffff;
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+
+    /* Player video a pieno schermo con rendering hardware GPU */
+    #tv-player {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      object-fit: contain;
+      background-color: #000000;
+      border: 0;
+      outline: none;
+      pointer-events: none;
+      transform: translateZ(0);
+    }
+
+    /* Schermata di configurazione (mostrata solo se STREAM_URL non è impostato) */
+    #config-notice {
+      display: none;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background-color: #0d1117;
+      color: #e6edf3;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 40px;
+      z-index: 999;
+    }
+
+    #config-notice h1 {
+      font-size: 32px;
+      margin-bottom: 16px;
+      color: #58a6ff;
+    }
+
+    #config-notice p {
+      font-size: 20px;
+      line-height: 1.6;
+      max-width: 800px;
+      color: #8b949e;
+    }
+
+    #config-notice code {
+      background: #161b22;
+      padding: 4px 8px;
+      border-radius: 6px;
+      color: #79c0ff;
+      font-family: monospace;
+    }
+
+    video::-webkit-media-controls,
+    video::-webkit-media-controls-enclosure {
+      display: none !important;
+    }
+  </style>
+
+  <!-- Hls.js Lightweight Bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.light.min.js"></script>
+
+  <!-- Caricamento opzionale del file di configurazione locale (escluso da git) -->
+  <script src="config.js"></script>
+</head>
+<body>
+
+  <!-- SCHERMATA CONFIGURAZIONE SE URL NON IMPOSTATO -->
+  <div id="config-notice">
+    <h1>Configurazione Stream Richiesta</h1>
+    <p>
+      Per conformità legale open-source, l'URL dello streaming non è incluso nel codice sorgente pubblico.<br><br>
+      Copia il file <code>config.example.js</code> in <code>config.js</code> e inserisci l'indirizzo del flusso HLS.
+    </p>
+  </div>
+
+  <video
+    id="tv-player"
+    autoplay
+    playsinline
+    webkit-playsinline
+    preload="auto">
+  </video>
+
+  <script>
+    /*!
+     * Telecupole (Unofficial) - LG Smart TV webOS
+     * License: MIT
+     * Disclaimer: Questo progetto è un software open source a scopo personale per poter
+     * mostrare i contenuti dell'emittente ai miei genitori. Non è affiliato, autorizzato,
+     * sponsorizzato né associato ufficialmente a Telecupole. Tutti i marchi, loghi e
+     * flussi multimediali appartengono ai rispettivi proprietari.
+     */
+    (function () {
+      "use strict";
+
+      // =========================================================================
+      // CONFIGURAZIONE STREAMING (Separata per conformità Git / DMCA)
+      // =========================================================================
+      // La priorità viene data alla variabile configurata in config.js (ignorato da git).
+      // Se non usi config.js, puoi impostare direttamente la costante sottostante.
+      const DEFAULT_STREAM_URL = "INSERISCI_QUI_URL_M3U8";
+
+      const configuredUrl = (window.APP_CONFIG && typeof window.APP_CONFIG.STREAM_URL === "string")
+        ? window.APP_CONFIG.STREAM_URL.trim()
+        : "";
+
+      const STREAM_URL = (configuredUrl && configuredUrl !== "INSERISCI_QUI_URL_M3U8")
+        ? configuredUrl
+        : (DEFAULT_STREAM_URL !== "INSERISCI_QUI_URL_M3U8" ? DEFAULT_STREAM_URL : "");
+
+      // =========================================================================
+
+      const video = document.getElementById("tv-player");
+      const configNotice = document.getElementById("config-notice");
+      let hls = null;
+      let reconnectTimer = null;
+      let watchdogTimer = null;
+      let lastCurrentTime = -1;
+      let stallCounter = 0;
+      let retryCount = 0;
+      let isRecovering = false;
+
+      // Parametri Hls.js ottimizzati per Smart TV LG
+      const hlsConfig = {
+        autoStartLoad: true,
+        startPosition: -1,
+        enableWorker: true,
+        lowLatencyMode: false,
+        backBufferLength: 0,
+        maxBufferLength: 8,
+        maxMaxBufferLength: 14,
+        maxBufferSize: 6 * 1024 * 1024,
+        liveSyncDurationCount: 3,
+        liveMaxLatencyDurationCount: 6,
+        liveDurationInfinity: true,
+        manifestLoadingTimeOut: 8000,
+        manifestLoadingMaxRetry: 3,
+        levelLoadingTimeOut: 8000,
+        fragLoadingTimeOut: 10000,
+        fpsDroppedMonitoring: false
+      };
+
+      function startPlayback() {
+        if (!STREAM_URL) {
+          if (configNotice) configNotice.style.display = "flex";
+          return;
+        }
+
+        if (configNotice) configNotice.style.display = "none";
+        if (document.hidden) return;
+
+        cleanupHls();
+        isRecovering = false;
+
+        if (window.Hls && window.Hls.isSupported()) {
+          hls = new window.Hls(hlsConfig);
+          hls.loadSource(STREAM_URL);
+          hls.attachMedia(video);
+
+          hls.on(window.Hls.Events.MANIFEST_PARSED, function () {
+            retryCount = 0;
+            stallCounter = 0;
+            enforcePlay();
+          });
+
+          hls.on(window.Hls.Events.ERROR, function (event, data) {
+            handleHlsError(data);
+          });
+        } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+          video.src = STREAM_URL;
+          enforcePlay();
+        } else {
+          scheduleReconnect(3000);
+        }
+      }
+
+      function handleHlsError(data) {
+        if (!data || !data.fatal) return;
+
+        switch (data.type) {
+          case window.Hls.ErrorTypes.NETWORK_ERROR:
+            try {
+              hls.startLoad();
+            } catch (e) {
+              scheduleReconnect(1500);
+            }
+            break;
+
+          case window.Hls.ErrorTypes.MEDIA_ERROR:
+            try {
+              hls.recoverMediaError();
+            } catch (e) {
+              scheduleReconnect(1000);
+            }
+            break;
+
+          default:
+            scheduleReconnect(2000);
+            break;
+        }
+      }
+
+      function cleanupHls() {
+        if (hls) {
+          try {
+            hls.detachMedia();
+            hls.destroy();
+          } catch (e) {}
+          hls = null;
+        }
+        if (video) {
+          try {
+            video.removeAttribute("src");
+            video.load();
+          } catch (e) {}
+        }
+      }
+
+      function scheduleReconnect(delayMs) {
+        if (reconnectTimer || document.hidden || !STREAM_URL) return;
+        isRecovering = true;
+        
+        const delay = delayMs || Math.min(1000 * Math.pow(1.4, retryCount), 8000);
+        retryCount++;
+
+        reconnectTimer = setTimeout(function () {
+          reconnectTimer = null;
+          startPlayback();
+        }, delay);
+      }
+
+      function enforcePlay() {
+        if (!video || document.hidden || !STREAM_URL) return;
+
+        video.muted = false;
+        var playPromise = video.play();
+
+        if (playPromise !== undefined) {
+          playPromise.catch(function () {
+            video.muted = true;
+            video.play().then(function () {
+              setTimeout(function () {
+                video.muted = false;
+              }, 300);
+            }).catch(function () {});
+          });
+        }
+      }
+
+      function startWatchdog() {
+        stopWatchdog();
+        watchdogTimer = setInterval(function () {
+          if (!video || document.hidden || isRecovering || !STREAM_URL) return;
+
+          if (video.paused) {
+            enforcePlay();
+          }
+
+          if (video.readyState >= 2 && !video.paused) {
+            if (video.currentTime === lastCurrentTime) {
+              stallCounter++;
+              if (stallCounter >= 3) {
+                stallCounter = 0;
+                scheduleReconnect(500);
+              }
+            } else {
+              lastCurrentTime = video.currentTime;
+              stallCounter = 0;
+            }
+          }
+        }, 2500);
+      }
+
+      function stopWatchdog() {
+        if (watchdogTimer) {
+          clearInterval(watchdogTimer);
+          watchdogTimer = null;
+        }
+      }
+
+      video.addEventListener("pause", enforcePlay);
+      video.addEventListener("ended", function () { scheduleReconnect(800); });
+      video.addEventListener("error", function () { scheduleReconnect(1500); });
+
+      function onKeyDown(e) {
+        var keyCode = e.keyCode || e.which;
+
+        switch (keyCode) {
+          case 461:
+          case 27:
+            e.preventDefault();
+            e.stopPropagation();
+            closeApp();
+            return;
+
+          case 415:
+          case 19:
+          case 413:
+          case 10252:
+            e.preventDefault();
+            e.stopPropagation();
+            enforcePlay();
+            return;
+
+          case 13:
+          case 37:
+          case 38:
+          case 39:
+          case 40:
+          case 403:
+          case 404:
+          case 405:
+          case 406:
+          case 412:
+          case 417:
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+
+          default:
+            break;
+        }
+      }
+
+      function closeApp() {
+        cleanupHls();
+        stopWatchdog();
+        if (reconnectTimer) clearTimeout(reconnectTimer);
+
+        if (window.webOS && typeof window.webOS.platformBack === "function") {
+          window.webOS.platformBack();
+        } else if (typeof window.close === "function") {
+          window.close();
+        } else {
+          history.back();
+        }
+      }
+
+      window.addEventListener("keydown", onKeyDown, true);
+      document.addEventListener("keydown", onKeyDown, true);
+      window.addEventListener("click", function (e) {
+        e.preventDefault();
+        enforcePlay();
+      }, true);
+
+      window.addEventListener("online", function () {
+        retryCount = 0;
+        startPlayback();
+      });
+
+      document.addEventListener("visibilitychange", function () {
+        if (document.hidden) {
+          stopWatchdog();
+          cleanupHls();
+        } else {
+          startPlayback();
+          startWatchdog();
+        }
+      });
+
+      window.addEventListener("webOSLaunch", startPlayback);
+      window.addEventListener("webOSRelaunch", enforcePlay);
+
+      window.addEventListener("DOMContentLoaded", function () {
+        startPlayback();
+        startWatchdog();
+      });
+
+    })();
+  </script>
+</body>
+</html>

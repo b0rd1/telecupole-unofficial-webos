@@ -1,0 +1,6 @@
+{
+  "name": "Telecupole - LG webOS Smart TV App",
+  "description": "Applicazione Kiosk streaming Zero-UI per LG Smart TV webOS per l'emittente Telecupole con recupero automatico e gestione telecomando.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

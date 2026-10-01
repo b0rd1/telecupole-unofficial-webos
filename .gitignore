@@ -1,0 +1,19 @@
+# Node dependencies & builds
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+
+# Environment variables
+.env*
+!.env.example
+
+# webOS local private configurations & compiled binaries (Anti-DMCA)
+telecupole-unofficial-webos/config.js
+telecupole-webos/config.js
+*.ipk
+*.zip
+.ares/
+.webos/

@@ -1,14 +1,14 @@
-# telecupole-unofficial-webos
+# Telecupole - LG Smart TV webOS Application
 
-Applicazione Kiosk streaming Zero-UI per Smart TV LG con sistema operativo **webOS** (compatibile con webOS 3.0, 3.5, 4.0, 4.5, 5.0, 6.0, 22, 23, 24).
+Applicazione Kiosk streaming Zero-UI nativa per Smart TV LG con sistema operativo **webOS** (compatibile con webOS 3.0, 3.5, 4.0, 4.5, 5.0, 6.0, 22, 23, 24).
 
 ---
 
-## 📁 Struttura del Progetto
+## 📁 Struttura della Cartella
 
 ```text
-telecupole-unofficial-webos/
-├── appinfo.json         # Manifest LG webOS (id: telecupole-unofficial-webos, 1080p, Zero-UI)
+telecupole-webos/
+├── appinfo.json         # Manifest certificato LG webOS (id: com.unofficial.telecupole, 1080p, Zero-UI)
 ├── index.html           # Player Kiosk Zero-UI (Hls.js, anti-pause, auto-reconnect, telecomando)
 ├── config.example.js    # Template per configurare lo stream m3u8 personale
 ├── config.js            # Il tuo file di configurazione locale (ignorato da .gitignore)
@@ -25,7 +25,7 @@ telecupole-unofficial-webos/
 
 Per tutelare il repository pubblico da violazioni di copyright o takedown DMCA, l'URL dello streaming non è memorizzato in chiaro nel codice sorgente pubblico.
 
-1. Entra nella cartella `telecupole-unofficial-webos`.
+1. Entra nella cartella `telecupole-webos`.
 2. Duplica il file `config.example.js` rinominandolo in `config.js`:
    ```bash
    cp config.example.js config.js
@@ -37,7 +37,7 @@ Per tutelare il repository pubblico da violazioni di copyright o takedown DMCA, 
      STREAM_URL: "https://tuo-url-streaming/playlist.m3u8"
    };
    ```
-4. **Nota**: Il file `config.js` è già inserito nel file `.gitignore`, quindi non verrà mai inviato su GitHub o su repository remoti pubblici.
+4. **Tranquillo**: Il file `config.js` è già inserito nel file `.gitignore`, quindi non verrà mai inviato su GitHub o su repository remoti!
 
 ---
 
@@ -58,8 +58,7 @@ Per tutelare il repository pubblico da violazioni di copyright o takedown DMCA, 
 2. Installa e avvia **Developer Mode**.
 3. Accedi con il tuo account LG (creane uno gratuito se non lo possiedi).
 4. Attiva la voce **Dev Mode Status** impostandola su **ON**.
-5. Attiva la voce **Key Server** impostandola su **ON**.
-6. Prendi nota di:
+5. Prendi nota di:
    - **IP Address** della TV (es. `192.168.1.150`)
    - **Passphrase** mostrata a schermo (6 caratteri)
 
@@ -80,21 +79,38 @@ ares-novacom --device tv --getkey
 *(Quando richiesto, inserisci la Passphrase a 6 caratteri mostrata sulla TV).*
 
 ### 3. Genera il pacchetto `.ipk`:
+Posizionati nella cartella superiore ed esegui:
 ```bash
-ares-package ./telecupole-unofficial-webos
+ares-package ./telecupole-webos
 ```
 Questo comando genererà il file:
-`telecupole-unofficial-webos_1.0.0_all.ipk`
+`it.telecupole.tv_1.0.0_all.ipk`
 
 ### 4. Installa l'applicazione sulla TV:
 ```bash
-ares-install -d tv telecupole-unofficial-webos_1.0.0_all.ipk
+ares-install -d tv it.telecupole.tv_1.0.0_all.ipk
 ```
 
 ### 5. Avvia lo streaming su TV:
 ```bash
-ares-launch -d tv telecupole-unofficial-webos
+ares-launch -d tv it.telecupole.tv
 ```
+
+### 6. Debug e ispezione da remoto (Chrome DevTools):
+```bash
+ares-inspect -d tv it.telecupole.tv
+```
+
+---
+
+## 🛡️ Caratteristiche Tecniche Implementate
+
+- **Zero-UI Kiosk**: Cursore del Magic Remote completamente nascosto (`cursor: none`), nessuno sfarfallio (schermo nero puro `#000000`), assenza di qualsiasi barra o popup.
+- **Blocco Totale della Pausa**: Qualsiasi evento di pausa o click/tasto viene intercettato e forza immediatamente il ripristino di `video.play()`.
+- **Ripristino Automatico Continuo**: Watchdog timer che rileva freeze del buffer o disconnessioni di rete, con recupero graduale senza mai mostrare crash o schermate bianche.
+- **Gestione Telecomando webOS**:
+  - Tasto **Back / Return** (Key Code 461): chiude l'app via `webOS.platformBack()` o `window.close()`.
+  - Tasti **Play (415), Pause (19), Stop (413)**: consumati e reindirizzati a riproduzione forzata.
 
 ---
 
@@ -105,3 +121,4 @@ Distribuito sotto licenza **MIT**. Consulta il file `LICENSE` per i dettagli.
 Questo progetto è un software open source a scopo personale per poter mostrare i contenuti dell'emittente ai miei genitori.
 Non è affiliato, autorizzato, sponsorizzato né associato ufficialmente a Telecupole. 
 Tutti i marchi, loghi e flussi multimediali appartengono ai rispettivi proprietari.
+
